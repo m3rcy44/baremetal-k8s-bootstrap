@@ -1,0 +1,4 @@
+---
+- name: Install Flannel CNI
+  ansible.builtin.include_tasks: master.yml
+  when: inventory_hostname in groups["masters"]

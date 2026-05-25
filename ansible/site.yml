@@ -1,0 +1,29 @@
+---
+- name: Prepare Kubernetes nodes
+  hosts: k8s_cluster
+  become: true
+  roles:
+    - role: linux_prepare
+      tags:
+        - linux_prepare
+    - role: container_runtime
+      tags:
+        - container_runtime
+    - role: kubernetes_packages
+      tags:
+        - kubernetes_packages
+    - role: kubernetes_cluster
+      tags:
+        - kubernetes_cluster
+    - role: flannel
+      tags:
+        - flannel
+    - role: metallb
+      tags:
+        - metallb
+    - role: ingress_nginx
+      tags:
+        - ingress_nginx
+    - role: monitoring_stack
+      tags:
+        - monitoring_stack

@@ -1,0 +1,17 @@
+---
+- name: Configure kubelet node IP on Lima shared network
+  ansible.builtin.copy:
+    dest: /etc/default/kubelet
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      KUBELET_EXTRA_ARGS=--node-ip={{ ansible_facts["lima0"]["ipv4"]["address"] }}
+
+- name: Initialize Kubernetes control plane
+  ansible.builtin.include_tasks: master.yml
+  when: inventory_hostname in groups["masters"]
+
+- name: Join Kubernetes worker nodes
+  ansible.builtin.include_tasks: worker.yml
+  when: inventory_hostname in groups["workers"]

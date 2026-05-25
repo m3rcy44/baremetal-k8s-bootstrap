@@ -1,0 +1,4 @@
+---
+flannel_manifest_url: "https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml"
+flannel_manifest_path: /tmp/kube-flannel.yml
+flannel_interface: lima0

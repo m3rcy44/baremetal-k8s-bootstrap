@@ -1,0 +1,54 @@
+---
+- name: Check if Kubernetes control plane is already initialized
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubernetes_admin_conf
+
+- name: Initialize Kubernetes control plane with kubeadm
+  ansible.builtin.command: >
+    kubeadm init
+    --pod-network-cidr={{ kubernetes_pod_network_cidr }}
+    --apiserver-advertise-address={{ ansible_facts["lima0"]["ipv4"]["address"] }}
+    --cri-socket={{ kubernetes_cri_socket }}
+  when: not kubernetes_admin_conf.stat.exists
+  register: kubeadm_init
+  changed_when: true
+
+- name: Create kubeadm join command
+  ansible.builtin.command: kubeadm token create --print-join-command
+  register: kubeadm_join_command_result
+  changed_when: false
+
+- name: Store kubeadm join command
+  ansible.builtin.set_fact:
+    kubeadm_join_command: "{{ kubeadm_join_command_result.stdout }} --cri-socket={{ kubernetes_cri_socket }}"
+
+- name: Detect default Lima VM user
+  ansible.builtin.shell: "getent passwd | awk -F: '$3 >= 500 && $6 ~ /^\\/home\\// {print $1; exit}'"
+  register: kubernetes_default_user_name
+  changed_when: false
+
+- name: Detect default Lima VM user home
+  ansible.builtin.shell: "getent passwd {{ kubernetes_default_user_name.stdout }} | cut -d: -f6"
+  register: kubernetes_default_user_home
+  changed_when: false
+  when: kubernetes_default_user_name.stdout | length > 0
+
+- name: Create kubeconfig directory for default Lima VM user
+  ansible.builtin.file:
+    path: "{{ kubernetes_default_user_home.stdout }}/.kube"
+    state: directory
+    owner: "{{ kubernetes_default_user_name.stdout }}"
+    group: "{{ kubernetes_default_user_name.stdout }}"
+    mode: "0755"
+  when: kubernetes_default_user_name.stdout | length > 0
+
+- name: Copy admin kubeconfig for default Lima VM user
+  ansible.builtin.copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ kubernetes_default_user_home.stdout }}/.kube/config"
+    remote_src: true
+    owner: "{{ kubernetes_default_user_name.stdout }}"
+    group: "{{ kubernetes_default_user_name.stdout }}"
+    mode: "0600"
+  when: kubernetes_default_user_name.stdout | length > 0

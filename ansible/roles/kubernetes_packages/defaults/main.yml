@@ -1,0 +1,8 @@
+---
+kubernetes_minor_version: "v1.36"
+kubernetes_apt_keyring: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+kubernetes_apt_source: "deb [signed-by={{ kubernetes_apt_keyring }}] https://pkgs.k8s.io/core:/stable:/{{ kubernetes_minor_version }}/deb/ /"
+kubernetes_packages:
+  - kubelet
+  - kubeadm
+  - kubectl

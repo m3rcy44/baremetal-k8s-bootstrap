@@ -1,0 +1,101 @@
+---
+- name: Check if Kubernetes control plane is initialized
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubernetes_admin_conf
+
+- name: Fail if Kubernetes control plane is not initialized
+  ansible.builtin.fail:
+    msg: "Kubernetes is not initialized. Run ./scripts/init-cluster.sh first."
+  when: not kubernetes_admin_conf.stat.exists
+
+- name: Check if Helm is installed
+  ansible.builtin.command: helm version --short
+  register: helm_version
+  changed_when: false
+  failed_when: false
+
+- name: Download Helm install script
+  ansible.builtin.get_url:
+    url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+    dest: /tmp/get-helm-3
+    owner: root
+    group: root
+    mode: "0755"
+  when: helm_version.rc != 0
+
+- name: Install Helm
+  ansible.builtin.command: /tmp/get-helm-3
+  when: helm_version.rc != 0
+  changed_when: true
+
+- name: Add prometheus-community Helm repo
+  ansible.builtin.command: "helm repo add {{ monitoring_helm_repo_name }} {{ monitoring_helm_repo_url }}"
+  register: helm_repo_add
+  changed_when: "'has been added' in helm_repo_add.stdout"
+  failed_when:
+    - helm_repo_add.rc != 0
+    - "'already exists' not in helm_repo_add.stderr"
+
+- name: Update Helm repos
+  ansible.builtin.command: helm repo update
+  changed_when: false
+
+- name: Create monitoring namespace
+  ansible.builtin.command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf create namespace {{ monitoring_namespace }}"
+  register: monitoring_namespace_create
+  changed_when: "'created' in monitoring_namespace_create.stdout"
+  failed_when:
+    - monitoring_namespace_create.rc != 0
+    - "'AlreadyExists' not in monitoring_namespace_create.stderr"
+
+- name: Write kube-prometheus-stack values
+  ansible.builtin.copy:
+    dest: "{{ monitoring_values_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      alertmanager:
+        enabled: false
+
+      grafana:
+        enabled: true
+        adminUser: {{ monitoring_grafana_admin_user }}
+        adminPassword: {{ monitoring_grafana_admin_password }}
+        ingress:
+          enabled: true
+          ingressClassName: nginx
+          hosts:
+            - {{ monitoring_grafana_host }}
+          path: /
+
+      prometheus:
+        prometheusSpec:
+          serviceMonitorSelectorNilUsesHelmValues: false
+          podMonitorSelectorNilUsesHelmValues: false
+          probeSelectorNilUsesHelmValues: false
+          ruleSelectorNilUsesHelmValues: false
+
+- name: Install or upgrade kube-prometheus-stack
+  ansible.builtin.command: >
+    helm upgrade --install {{ monitoring_release_name }} {{ monitoring_chart_name }}
+    --namespace {{ monitoring_namespace }}
+    --values {{ monitoring_values_path }}
+    --kubeconfig /etc/kubernetes/admin.conf
+    --wait
+    --timeout 10m
+  register: monitoring_helm_upgrade
+  changed_when: "'has been upgraded' in monitoring_helm_upgrade.stdout or 'has been installed' in monitoring_helm_upgrade.stdout"
+
+- name: Wait for Grafana rollout
+  ansible.builtin.command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf -n {{ monitoring_namespace }} rollout status deployment/{{ monitoring_release_name }}-grafana --timeout=300s"
+  changed_when: false
+
+- name: Wait for Prometheus operator rollout
+  ansible.builtin.command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf -n {{ monitoring_namespace }} rollout status deployment/{{ monitoring_release_name }}-operator --timeout=300s"
+  changed_when: false
+
+- name: Wait for Prometheus StatefulSet rollout
+  ansible.builtin.command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf -n {{ monitoring_namespace }} rollout status statefulset/prometheus-{{ monitoring_release_name }}-prometheus --timeout=300s"
+  changed_when: false

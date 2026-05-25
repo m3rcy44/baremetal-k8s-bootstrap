@@ -1,0 +1,4 @@
+---
+- name: Install ingress-nginx
+  ansible.builtin.include_tasks: master.yml
+  when: inventory_hostname in groups["masters"]

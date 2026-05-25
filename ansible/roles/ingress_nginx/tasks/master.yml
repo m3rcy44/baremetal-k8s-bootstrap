@@ -1,0 +1,53 @@
+---
+- name: Check if Kubernetes control plane is initialized
+  ansible.builtin.stat:
+    path: /etc/kubernetes/admin.conf
+  register: kubernetes_admin_conf
+
+- name: Fail if Kubernetes control plane is not initialized
+  ansible.builtin.fail:
+    msg: "Kubernetes is not initialized. Run ./scripts/init-cluster.sh first."
+  when: not kubernetes_admin_conf.stat.exists
+
+- name: Download ingress-nginx manifest
+  ansible.builtin.get_url:
+    url: "{{ ingress_nginx_manifest_url }}"
+    dest: "{{ ingress_nginx_manifest_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Apply ingress-nginx manifest
+  ansible.builtin.command: "kubectl --kubeconfig=/etc/kubernetes/admin.conf apply -f {{ ingress_nginx_manifest_path }}"
+  register: ingress_nginx_apply
+  changed_when: "'created' in ingress_nginx_apply.stdout"
+
+- name: Wait for ingress-nginx admission jobs
+  ansible.builtin.shell: |
+    for job in ingress-nginx-admission-create ingress-nginx-admission-patch; do
+      if kubectl --kubeconfig=/etc/kubernetes/admin.conf -n ingress-nginx get job "$job" >/dev/null 2>&1; then
+        kubectl --kubeconfig=/etc/kubernetes/admin.conf -n ingress-nginx wait --for=condition=complete "job/$job" --timeout=180s || true
+      fi
+    done
+    exit 0
+  changed_when: false
+
+- name: Wait for ingress-nginx controller rollout
+  ansible.builtin.command: kubectl --kubeconfig=/etc/kubernetes/admin.conf -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=180s
+  changed_when: false
+
+- name: Wait for ingress-nginx LoadBalancer IP
+  ansible.builtin.shell: |
+    set -e
+    for i in $(seq 1 60); do
+      ip="$(kubectl --kubeconfig=/etc/kubernetes/admin.conf -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+      if [ -n "$ip" ]; then
+        echo "$ip"
+        exit 0
+      fi
+      sleep 2
+    done
+    echo "ingress-nginx LoadBalancer IP was not assigned" >&2
+    exit 1
+  register: ingress_nginx_external_ip
+  changed_when: false

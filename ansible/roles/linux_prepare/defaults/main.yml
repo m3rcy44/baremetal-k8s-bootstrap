@@ -1,0 +1,8 @@
+---
+linux_prepare_packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+  - software-properties-common

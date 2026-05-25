@@ -1,0 +1,37 @@
+---
+- name: Install containerd
+  ansible.builtin.apt:
+    name: containerd
+    state: present
+    update_cache: true
+
+- name: Ensure containerd config directory exists
+  ansible.builtin.file:
+    path: /etc/containerd
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Generate default containerd config
+  ansible.builtin.command: containerd config default
+  register: containerd_default_config
+  changed_when: false
+
+- name: Configure containerd for Kubernetes
+  ansible.builtin.copy:
+    dest: /etc/containerd/config.toml
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ containerd_default_config.stdout | regex_replace('SystemdCgroup = false', 'SystemdCgroup = true') }}\n"
+  notify: restart containerd
+
+- name: Enable and start containerd
+  ansible.builtin.service:
+    name: containerd
+    enabled: true
+    state: started
+
+- name: Flush handlers
+  ansible.builtin.meta: flush_handlers

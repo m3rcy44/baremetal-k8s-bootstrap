@@ -1,0 +1,10 @@
+---
+monitoring_namespace: monitoring
+monitoring_release_name: kube-prometheus-stack
+monitoring_helm_repo_name: prometheus-community
+monitoring_helm_repo_url: https://prometheus-community.github.io/helm-charts
+monitoring_chart_name: prometheus-community/kube-prometheus-stack
+monitoring_values_path: /tmp/kube-prometheus-stack-values.yaml
+monitoring_grafana_host: grafana.local
+monitoring_grafana_admin_user: admin
+monitoring_grafana_admin_password: admin
